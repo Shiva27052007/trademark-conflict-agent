@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: trademark_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trademark_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trademark_secure_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-trademark_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trademark_user -d trademark_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: trademark_backend
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-trademark_user}:${POSTGRES_PASSWORD:-trademark_secure_pass}@db:5432/${POSTGRES_DB:-trademark_db}
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      API_CORS_ORIGINS: "http://localhost:5173,http://localhost:3000,http://frontend:80"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./reports:/app/reports
+      - ./datasets:/app/datasets
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: trademark_frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  postgres_data:
